@@ -1,0 +1,42 @@
+# USER CODE BEGIN DEBUG
+GDB_SERVER = /usr/sbin/JLinkGDBServerCLExe
+GDB_SERVER_FLAGS = -device STM32L433RC -speed 1800 -if SWD -port 3333
+GDB = arm-none-eabi-gdb
+GDBFLAGS =
+
+JLinkExe = JLinkExe
+JLinkPGMFlags = -device STM32L433RC -speed 1800 -if SWD -commandfile program.jlink
+
+
+DOXYGEN=doxygen
+DOXYFILE=Doxyfile
+
+#######################################
+# Debug and Misc.
+#######################################
+
+program: all
+	$(JLinkExe) $(JLinkPGMFlags)
+
+jlink:
+	$(GDB_SERVER) $(GDB_SERVER_FLAGS)
+
+doxygen:
+	$(DOXYGEN) $(DOXYFILE)
+
+debug:
+
+	@if ! nc -z localhost 3333; then \
+		echo "\n\t[Error] JLinkGDBServerCLExe is not running! Start it with: 'make jlink'\n"; exit 1; \
+	else \
+		$(GDB) -ex "target extended localhost:3333" -ex "monitor reset halt" -ex "load" -ex "monitor reset init" $(GDBFLAGS) ./build/$(TARGET).elf; fi
+		# BROWSER= gdbgui -g $(GDB) --gdb-args '-ex "target extended localhost:3333" -ex "monitor reset halt" -ex "load" -ex "monitor reset init" $(GDBFLAGS) ./build/$(TARGET).elf'; fi
+
+#######################################
+# dos2unix
+#######################################
+dos2unix:
+	./dos2unix.sh
+
+# USER CODE END DEBUG
+

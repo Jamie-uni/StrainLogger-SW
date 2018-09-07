@@ -72,7 +72,9 @@ TIM_HandleTypeDef htim6;
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
-RecSessionStateEnum recSessionState;
+volatile RecSessionStateEnum recSessionState;
+volatile uint8_t adcDataReady;
+/* volatile uint32_t */
 
 /* USER CODE END PV */
 
@@ -103,7 +105,7 @@ void USR_LedBlink(int i){
 	    HAL_GPIO_TogglePin(LED_STAT_GPIO_Port, LED_STAT_Pin);
 	    HAL_Delay(200);
 	}
-    HAL_GPIO_WritePin(LED_STAT_GPIO_Port, LED_STAT_Pin, GPIO_PIN_RESET);
+    /* HAL_GPIO_WritePin(LED_STAT_GPIO_Port, LED_STAT_Pin, GPIO_PIN_RESET); */
 }
 
 void USR_PowerOff(void){
@@ -171,7 +173,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *timHandle)
 void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *timHandle)
 {
     if (timHandle == &htim1) {
-	HAL_GPIO_TogglePin(SYNC_GPIO_Port, SYNC_Pin);
+        HAL_GPIO_TogglePin(SYNC_GPIO_Port, SYNC_Pin);
     }
 }
 
@@ -258,6 +260,32 @@ void USR_InitExtADC(void){
 
 }
 
+void USR_ExtADC_Read(int32_t adcValue[4]){
+    uint8_t pRxDat[3];
+    uint16_t ST_CS_PINS[] = {ST_CS1_Pin, ST_CS2_Pin, ST_CS3_Pin, ST_CS4_Pin};
+    GPIO_TypeDef* ST_CS_GPIO_PORTS[] = {ST_CS1_GPIO_Port,ST_CS2_GPIO_Port,ST_CS3_GPIO_Port,ST_CS4_GPIO_Port};
+
+    for (int i = 0; i < 4; i++){
+
+        memset(pRxDat, 0, sizeof(pRxDat));
+        //Read ADC
+        HAL_GPIO_WritePin(ST_CS_GPIO_PORTS[i], ST_CS_PINS[i], GPIO_PIN_RESET);
+        /* HAL_Delay(1); */
+        HAL_SPI_Receive(&hspi1, pRxDat, 3, HAL_MAX_DELAY);
+        /* HAL_Delay(1); */
+        HAL_GPIO_WritePin(ST_CS_GPIO_PORTS[i], ST_CS_PINS[i], GPIO_PIN_SET);
+        /* HAL_Delay(1); */
+        adcValue[i] = (((uint32_t)pRxDat[0]) << 16) | (((uint32_t) pRxDat[1]) << 8) | pRxDat[2];
+        if (adcValue[i]>>23){
+            adcValue[i] = (~adcValue[i]) & 0x007FFFFF;
+            adcValue[i]++;
+            adcValue[i] *= -1;
+        }
+    }
+
+
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -300,6 +328,7 @@ int main(void)
   MX_RTC_Init();
   /* USER CODE BEGIN 2 */
 
+    /* HAL_NVIC_SetPriority(TIM1_CC_IRQn, 2, 0); // Set timer1 priority */
     USR_ADC1_Init();
     HAL_TIM_OC_Start_IT(&htim1, TIM_CHANNEL_3);
     HAL_TIM_OC_Start(&htim2, TIM_CHANNEL_1);
@@ -315,19 +344,44 @@ int main(void)
     USR_CheckSD();
     USR_InitExtADC();
 
-    HAL_Delay(2000);
+    HAL_Delay(1000);
+    __HAL_GPIO_EXTI_CLEAR_IT(EXTI9_5_IRQn);
     HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-    while (1) {
+
+    f_open(&SDFile, "STRAIN.TXT", FA_CREATE_ALWAYS | FA_WRITE);
+
+    USR_LedBlink(1);
+    uint32_t wbytes;				    /* File write counts */
+    int32_t adcValue[4];
+    char adcstr[100];
+    recSessionState = ACTIVE_SESSION;
+    /* for (int i = 0; i<100; i++) { */
+    while (recSessionState == ACTIVE_SESSION){
+
+        memset(adcValue, 0, sizeof(adcValue));
+        HAL_Delay(50);
+        USR_ExtADC_Read(adcValue);
+        sprintf(adcstr, "%ld,%ld,%ld,%ld\r\n", (long) adcValue[0],(long) adcValue[1],(long) adcValue[2],(long) adcValue[3]);
+        CDC_Transmit_FS((uint8_t*)adcstr, strlen(adcstr));
+		f_write(&SDFile, adcstr, strlen(adcstr), (void *)&wbytes);
 
   /* USER CODE END WHILE */
 
   /* USER CODE BEGIN 3 */
     }
+
+    f_close(&SDFile);
+    FATFS_UnLinkDriver(SDPath);
+    while(1) {
+        HAL_Delay(2000);
+        USR_LedBlink(2);
+    }
+    /* USR_PowerOff(); */
   /* USER CODE END 3 */
 
 }
@@ -502,7 +556,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_2EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_64;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;

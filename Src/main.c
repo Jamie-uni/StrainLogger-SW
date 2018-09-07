@@ -184,9 +184,10 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
     }
 
     if (GPIO_Pin == BUTTON_Pin){
-        if (recSessionState == ACTIVE_SESSION) recSessionState = NEW_SESSION;
-        HAL_NVIC_DisableIRQ(EXTI9_5_IRQn);
-
+        if (recSessionState == ACTIVE_SESSION) {
+            recSessionState = NEW_SESSION;
+            HAL_NVIC_DisableIRQ(EXTI9_5_IRQn);
+        }
     }
 }
 void USR_InitExtADC(void){
@@ -345,8 +346,8 @@ int main(void)
     USR_InitExtADC();
 
     HAL_Delay(1000);
-    __HAL_GPIO_EXTI_CLEAR_IT(EXTI9_5_IRQn);
-    HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
+    /* __HAL_GPIO_EXTI_CLEAR_IT(EXTI9_5_IRQn); */
+    /* HAL_NVIC_EnableIRQ(EXTI9_5_IRQn); */
 
   /* USER CODE END 2 */
 
@@ -366,7 +367,8 @@ int main(void)
         memset(adcValue, 0, sizeof(adcValue));
         HAL_Delay(50);
         USR_ExtADC_Read(adcValue);
-        sprintf(adcstr, "%ld,%ld,%ld,%ld\r\n", (long) adcValue[0],(long) adcValue[1],(long) adcValue[2],(long) adcValue[3]);
+        sprintf(adcstr, "%ld\n", (long) adcValue[0]);
+        /* sprintf(adcstr, "%ld,%ld,%ld,%ld\r\n", (long) adcValue[0],(long) adcValue[1],(long) adcValue[2],(long) adcValue[3]); */
         CDC_Transmit_FS((uint8_t*)adcstr, strlen(adcstr));
 		f_write(&SDFile, adcstr, strlen(adcstr), (void *)&wbytes);
 
@@ -556,7 +558,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_2EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_64;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -802,6 +804,9 @@ static void MX_GPIO_Init(void)
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI3_IRQn, 9, 0);
   HAL_NVIC_EnableIRQ(EXTI3_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 9, 0);
+  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
 }
 

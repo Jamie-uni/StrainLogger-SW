@@ -73,6 +73,7 @@
 #define SYNC_GPIO_Port GPIOC
 #define BUTTON_Pin GPIO_PIN_7
 #define BUTTON_GPIO_Port GPIOC
+#define BUTTON_EXTI_IRQn EXTI9_5_IRQn
 #define V_LATCH_Pin GPIO_PIN_8
 #define V_LATCH_GPIO_Port GPIOA
 #define SD_DETECT_Pin GPIO_PIN_3

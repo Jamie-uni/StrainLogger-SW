@@ -155,7 +155,8 @@ DSTATUS SD_status(BYTE lun)
 }
 
 /* USER CODE BEGIN beforeReadSection */
-/* can be used to modify previous code / undefine following code / add new code */
+/* can be used to modify previous code / undefine following code / add new code
+ */
 /* USER CODE END beforeReadSection */
 /**
   * @brief  Reads Sector(s)
@@ -184,7 +185,8 @@ DRESULT SD_read(BYTE lun, BYTE *buff, DWORD sector, UINT count)
 }
 
 /* USER CODE BEGIN beforeWriteSection */
-/* can be used to modify previous code / undefine following code / add new code */
+/* can be used to modify previous code / undefine following code / add new code
+ */
 /* USER CODE END beforeWriteSection */
 /**
   * @brief  Writes Sector(s)
@@ -215,7 +217,8 @@ DRESULT SD_write(BYTE lun, const BYTE *buff, DWORD sector, UINT count)
 #endif /* _USE_WRITE == 1 */
 
 /* USER CODE BEGIN beforeIoctlSection */
-/* can be used to modify previous code / undefine following code / add new code */
+/* can be used to modify previous code / undefine following code / add new code
+ */
 /* USER CODE END beforeIoctlSection */
 /**
   * @brief  I/O control operation
@@ -269,7 +272,8 @@ DRESULT SD_ioctl(BYTE lun, BYTE cmd, void *buff)
 #endif /* _USE_IOCTL == 1 */
 
 /* USER CODE BEGIN afterIoctlSection */
-/* can be used to modify previous code / undefine following code / add new code */
+/* can be used to modify previous code / undefine following code / add new code
+ */
 /* USER CODE END afterIoctlSection */
 
 /* USER CODE BEGIN lastSection */ 

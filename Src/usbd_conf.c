@@ -215,11 +215,12 @@ void HAL_PCD_SuspendCallback(PCD_HandleTypeDef *hpcd)
   USBD_LL_Suspend((USBD_HandleTypeDef*)hpcd->pData);
   /* Enter in STOP mode. */
   /* USER CODE BEGIN 2 */
-  if (hpcd->Init.low_power_enable)
-  {
-    /* Set SLEEPDEEP bit and SleepOnExit of Cortex System Control Register. */
-    SCB->SCR |= (uint32_t)((uint32_t)(SCB_SCR_SLEEPDEEP_Msk | SCB_SCR_SLEEPONEXIT_Msk));
-  }
+    if (hpcd->Init.low_power_enable) {
+	/* Set SLEEPDEEP bit and SleepOnExit of Cortex System Control Register.
+	 */
+	SCB->SCR |= (uint32_t)(
+	    (uint32_t)(SCB_SCR_SLEEPDEEP_Msk | SCB_SCR_SLEEPONEXIT_Msk));
+    }
   /* USER CODE END 2 */
 }
 
@@ -233,12 +234,12 @@ void HAL_PCD_ResumeCallback(PCD_HandleTypeDef *hpcd)
 {
 
   /* USER CODE BEGIN 3 */
-  if (hpcd->Init.low_power_enable)
-  {
-    /* Reset SLEEPDEEP bit of Cortex System Control Register. */
-    SCB->SCR &= (uint32_t)~((uint32_t)(SCB_SCR_SLEEPDEEP_Msk | SCB_SCR_SLEEPONEXIT_Msk));
-    SystemClockConfig_Resume();
-  }
+    if (hpcd->Init.low_power_enable) {
+	/* Reset SLEEPDEEP bit of Cortex System Control Register. */
+	SCB->SCR &= (uint32_t) ~(
+	    (uint32_t)(SCB_SCR_SLEEPDEEP_Msk | SCB_SCR_SLEEPONEXIT_Msk));
+	SystemClockConfig_Resume();
+    }
   /* USER CODE END 3 */
   USBD_LL_Resume((USBD_HandleTypeDef*)hpcd->pData);
 }
@@ -791,14 +792,11 @@ void USBD_static_free(void *p)
 
 /* USER CODE BEGIN 5 */
 /**
-  * @brief  Configures system clock after wake-up from USB resume callBack:
-  *         enable HSI, PLL and select PLL as system clock source.
-  * @retval None
-  */
-static void SystemClockConfig_Resume(void)
-{
-  SystemClock_Config();
-}
+ * @brief  Configures system clock after wake-up from USB resume callBack:
+ *         enable HSI, PLL and select PLL as system clock source.
+ * @retval None
+ */
+static void SystemClockConfig_Resume(void) { SystemClock_Config(); }
 /* USER CODE END 5 */
 
 /**
@@ -810,16 +808,12 @@ static void SystemClockConfig_Resume(void)
 void HAL_PCDEx_SetConnectionState(PCD_HandleTypeDef *hpcd, uint8_t state)
 {
   /* USER CODE BEGIN 6 */
-  if (state == 1)
-  {
-    /* Configure Low connection state. */
+    if (state == 1) {
+	/* Configure Low connection state. */
 
-  }
-  else
-  {
-    /* Configure High connection state. */
-
-  }
+    } else {
+	/* Configure High connection state. */
+    }
   /* USER CODE END 6 */
 }
 

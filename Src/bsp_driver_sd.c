@@ -315,31 +315,22 @@ void HAL_SD_RxCpltCallback(SD_HandleTypeDef *hsd)
 
 /* USER CODE BEGIN CallBacksSection_C */
 /**
-  * @brief BSP SD Abort callback
-  * @retval None
-  */
-__weak void BSP_SD_AbortCallback(void)
-{
-
-}
+ * @brief BSP SD Abort callback
+ * @retval None
+ */
+__weak void BSP_SD_AbortCallback(void) {}
 
 /**
-  * @brief BSP Tx Transfer completed callback
-  * @retval None
-  */
-__weak void BSP_SD_WriteCpltCallback(void)
-{
-
-}
+ * @brief BSP Tx Transfer completed callback
+ * @retval None
+ */
+__weak void BSP_SD_WriteCpltCallback(void) {}
 
 /**
-  * @brief BSP Rx Transfer completed callback
-  * @retval None
-  */
-__weak void BSP_SD_ReadCpltCallback(void)
-{
-
-}
+ * @brief BSP Rx Transfer completed callback
+ * @retval None
+ */
+__weak void BSP_SD_ReadCpltCallback(void) {}
 /* USER CODE END CallBacksSection_C */
 #endif
 
@@ -353,7 +344,7 @@ uint8_t BSP_SD_IsDetected(void)
   __IO uint8_t status = SD_PRESENT;
 
   /* USER CODE BEGIN 1 */
-  /* user code can be inserted here */
+    /* user code can be inserted here */
   /* USER CODE END 1 */    	
 
   return status;

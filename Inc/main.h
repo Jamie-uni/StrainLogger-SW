@@ -75,8 +75,9 @@
 #define BUTTON_GPIO_Port GPIOC
 #define V_LATCH_Pin GPIO_PIN_8
 #define V_LATCH_GPIO_Port GPIOA
-#define SD_DETECT_Pin GPIO_PIN_4
+#define SD_DETECT_Pin GPIO_PIN_3
 #define SD_DETECT_GPIO_Port GPIOB
+#define SD_DETECT_EXTI_IRQn EXTI3_IRQn
 
 /* ########################## Assert Selection ############################## */
 /**
@@ -86,8 +87,8 @@
 /* #define USE_FULL_ASSERT    1U */
 
 /* USER CODE BEGIN Private defines */
-typedef enum {FULL, LOW, CRITICAL} BattStatusEnum;
-typedef enum {NEW_SESSION, ACTIVE_SESSION, POWER_DOWN} RecSessionStateEnum;
+typedef enum { FULL, LOW, CRITICAL } BattStatusEnum;
+typedef enum { NEW_SESSION, ACTIVE_SESSION, POWER_DOWN } RecSessionStateEnum;
 
 /* USER CODE END Private defines */
 

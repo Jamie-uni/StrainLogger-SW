@@ -96,7 +96,7 @@ USBD_HandleTypeDef hUsbDeviceFS;
 void MX_USB_DEVICE_Init(void)
 {
   /* USER CODE BEGIN USB_DEVICE_Init_PreTreatment */
-  
+
   /* USER CODE END USB_DEVICE_Init_PreTreatment */
   
   /* Init Device Library, add supported class and start the library. */
@@ -111,7 +111,7 @@ void MX_USB_DEVICE_Init(void)
   USBD_Start(&hUsbDeviceFS);
   }
   /* USER CODE BEGIN USB_DEVICE_Init_PostTreatment */
-  
+
   /* USER CODE END USB_DEVICE_Init_PostTreatment */
 }
 
@@ -126,35 +126,33 @@ void HAL_PCDEx_BCD_Callback(PCD_HandleTypeDef *hpcd, PCD_BCD_MsgTypeDef msg)
   USBD_HandleTypeDef usbdHandle = hUsbDeviceFS;
 
   /* USER CODE BEGIN 7 */
-  if (hpcd->battery_charging_active == ENABLE)
-  {
-    switch(msg)
-    {
-      case PCD_BCD_CONTACT_DETECTION:
+    if (hpcd->battery_charging_active == ENABLE) {
+	switch (msg) {
+	case PCD_BCD_CONTACT_DETECTION:
 
-      break;
+	    break;
 
-      case PCD_BCD_STD_DOWNSTREAM_PORT:
+	case PCD_BCD_STD_DOWNSTREAM_PORT:
 
-      break;
+	    break;
 
-      case PCD_BCD_CHARGING_DOWNSTREAM_PORT:
+	case PCD_BCD_CHARGING_DOWNSTREAM_PORT:
 
-      break;
+	    break;
 
-      case PCD_BCD_DEDICATED_CHARGING_PORT:
+	case PCD_BCD_DEDICATED_CHARGING_PORT:
 
-      break;
+	    break;
 
-      case PCD_BCD_DISCOVERY_COMPLETED:
-        USBD_Start(&usbdHandle);
-      break;
+	case PCD_BCD_DISCOVERY_COMPLETED:
+	    USBD_Start(&usbdHandle);
+	    break;
 
-      case PCD_BCD_ERROR:
-      default:
-      break;
+	case PCD_BCD_ERROR:
+	default:
+	    break;
+	}
     }
-  }
   /* USER CODE END 7 */
 }
 

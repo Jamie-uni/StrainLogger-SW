@@ -53,6 +53,7 @@
 #include "usb_device.h"
 
 /* USER CODE BEGIN Includes */
+#include "usbd_cdc_if.h"
 
 /* USER CODE END Includes */
 
@@ -71,6 +72,7 @@ TIM_HandleTypeDef htim6;
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
+RecSessionStateEnum recSessionState;
 
 /* USER CODE END PV */
 
@@ -95,6 +97,166 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
 /* USER CODE END PFP */
 
 /* USER CODE BEGIN 0 */
+void USR_LedBlink(int i){
+    i *=2;
+    while (i--) {
+	    HAL_GPIO_TogglePin(LED_STAT_GPIO_Port, LED_STAT_Pin);
+	    HAL_Delay(200);
+	}
+    HAL_GPIO_WritePin(LED_STAT_GPIO_Port, LED_STAT_Pin, GPIO_PIN_RESET);
+}
+
+void USR_PowerOff(void){
+	HAL_GPIO_WritePin(V_LATCH_GPIO_Port, V_LATCH_Pin, GPIO_PIN_RESET);
+    HAL_Delay(3000);
+    NVIC_SystemReset();
+}
+
+
+void USR_ADC1_Init(void)
+{
+    /**Configure Regular Channel
+     */
+    ADC_ChannelConfTypeDef sConfig;
+    sConfig.Channel = ADC_CHANNEL_VBAT;
+    sConfig.Rank = ADC_REGULAR_RANK_1;
+    sConfig.SamplingTime = ADC_SAMPLETIME_640CYCLES_5;
+    sConfig.SingleDiff = ADC_SINGLE_ENDED;
+    sConfig.OffsetNumber = ADC_OFFSET_NONE;
+    sConfig.Offset = 0;
+    if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK) {
+	_Error_Handler(__FILE__, __LINE__);
+    }
+}
+
+void USR_CheckSD(void)
+{
+
+    if (HAL_GPIO_ReadPin(SD_DETECT_GPIO_Port, SD_DETECT_Pin) == GPIO_PIN_SET){
+        USR_LedBlink(4);
+        USR_PowerOff();
+    }
+    else HAL_NVIC_EnableIRQ(SD_DETECT_EXTI_IRQn);
+}
+
+BattStatusEnum USR_getBatteryLevel(void)
+{
+    HAL_ADC_Start(&hadc1);
+    HAL_StatusTypeDef hstatus;
+
+    do {
+	hstatus = HAL_ADC_PollForConversion(&hadc1, 10);
+	if (hstatus == HAL_TIMEOUT)
+	    _Error_Handler(__FILE__, __LINE__);
+    } while (hstatus != HAL_OK);
+
+    int adc_value = HAL_ADC_GetValue(&hadc1);
+    /* HAL_GPIO_TogglePin(SYNC_GPIO_Port, SYNC_Pin); */
+    if (adc_value > 1613)
+	return FULL; // 4.0V level
+    if (adc_value < 1411)
+	return CRITICAL; // 3.5V level
+    /* if (adc_value > 1531) return LOW; // 3.7V level */
+    return LOW;
+}
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *timHandle)
+{
+    if (timHandle == &htim6) {
+	if (USR_getBatteryLevel() == CRITICAL) {
+	    recSessionState = POWER_DOWN;
+	}
+    }
+}
+void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *timHandle)
+{
+    if (timHandle == &htim1) {
+	HAL_GPIO_TogglePin(SYNC_GPIO_Port, SYNC_Pin);
+    }
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
+    if (GPIO_Pin == SD_DETECT_Pin){
+        HAL_NVIC_DisableIRQ(SD_DETECT_EXTI_IRQn);
+        USR_CheckSD();
+    }
+
+    if (GPIO_Pin == BUTTON_Pin){
+        if (recSessionState == ACTIVE_SESSION) recSessionState = NEW_SESSION;
+        HAL_NVIC_DisableIRQ(EXTI9_5_IRQn);
+
+    }
+}
+void USR_InitExtADC(void){
+
+
+    uint8_t pTxDat[5];
+    uint8_t pRxDat[5];
+    uint16_t ST_CS_PINS[] = {ST_CS1_Pin, ST_CS2_Pin, ST_CS3_Pin, ST_CS4_Pin};
+    GPIO_TypeDef* ST_CS_GPIO_PORTS[] = {ST_CS1_GPIO_Port,ST_CS2_GPIO_Port,ST_CS3_GPIO_Port,ST_CS4_GPIO_Port};
+
+    for (int i = 0; i < 4; i++){
+
+        memset(pTxDat, 0, sizeof(pTxDat));
+        memset(pRxDat, 0, sizeof(pTxDat));
+        //Reset ADC
+        pTxDat[0] = 0b00000110;
+        HAL_GPIO_WritePin(ST_CS_GPIO_PORTS[i], ST_CS_PINS[i], GPIO_PIN_RESET);
+        HAL_Delay(1);
+        HAL_SPI_TransmitReceive(&hspi1, pTxDat, pRxDat, 1, HAL_MAX_DELAY);
+        HAL_Delay(1);
+        HAL_GPIO_WritePin(ST_CS_GPIO_PORTS[i], ST_CS_PINS[i], GPIO_PIN_SET);
+        HAL_Delay(2);
+
+        //Configure ADC
+        pTxDat[0] = 0b01000011;
+        // AINP = AIN1, AINN = AIN2, gain = 128, PGA enabled
+        pTxDat[1] = 0x3E;
+        // DR = 2000 SPS, normal mode, continuous conversion mode
+        pTxDat[2] = 0xC4;
+        // External reference (REFP1, REFN1), simultaneous 50-Hz and 60-Hz
+        pTxDat[3] = 0x98;
+        // No IDACs used
+        pTxDat[4] = 0x00;
+        HAL_GPIO_WritePin(ST_CS_GPIO_PORTS[i], ST_CS_PINS[i], GPIO_PIN_RESET);
+        HAL_Delay(1);
+        HAL_SPI_TransmitReceive(&hspi1, pTxDat, pRxDat, 5, HAL_MAX_DELAY);
+        HAL_Delay(1);
+        HAL_GPIO_WritePin(ST_CS_GPIO_PORTS[i], ST_CS_PINS[i], GPIO_PIN_SET);
+        HAL_Delay(2);
+
+        //Check ADC Registers
+        memset(pTxDat, 0, sizeof(pTxDat));
+        memset(pRxDat, 0, sizeof(pRxDat));
+        pTxDat[0] = 0b00100011;
+        HAL_GPIO_WritePin(ST_CS_GPIO_PORTS[i], ST_CS_PINS[i], GPIO_PIN_RESET);
+        HAL_Delay(1);
+        HAL_SPI_TransmitReceive(&hspi1, pTxDat, pRxDat, 5, HAL_MAX_DELAY);
+        HAL_Delay(1);
+        HAL_GPIO_WritePin(ST_CS_GPIO_PORTS[i], ST_CS_PINS[i], GPIO_PIN_SET);
+        if (pRxDat[1] != 0x3E) {
+            USR_LedBlink(6);
+            _Error_Handler(__FILE__, __LINE__);
+        }
+
+        //Start ADC
+        memset(pTxDat, 0, sizeof(pTxDat));
+        memset(pRxDat, 0, sizeof(pRxDat));
+        pTxDat[0] = 0b00001000;
+        HAL_GPIO_WritePin(ST_CS_GPIO_PORTS[i], ST_CS_PINS[i], GPIO_PIN_RESET);
+        HAL_Delay(1);
+        HAL_SPI_TransmitReceive(&hspi1, pTxDat, pRxDat, 1, HAL_MAX_DELAY);
+        HAL_Delay(1);
+        HAL_GPIO_WritePin(ST_CS_GPIO_PORTS[i], ST_CS_PINS[i], GPIO_PIN_SET);
+        HAL_Delay(1);
+
+
+
+    }
+    //Reset TIMER Counter
+    __HAL_TIM_SetCounter(&htim1, 0);
+
+}
 
 /* USER CODE END 0 */
 
@@ -138,19 +300,34 @@ int main(void)
   MX_RTC_Init();
   /* USER CODE BEGIN 2 */
 
-  HAL_GPIO_WritePin(LED_STAT_GPIO_Port, LED_STAT_Pin, GPIO_PIN_SET);
+    USR_ADC1_Init();
+    HAL_TIM_OC_Start_IT(&htim1, TIM_CHANNEL_3);
+    HAL_TIM_OC_Start(&htim2, TIM_CHANNEL_1);
+    HAL_TIM_Base_Start_IT(&htim6);
+
+    HAL_GPIO_WritePin(LED_STAT_GPIO_Port, LED_STAT_Pin, GPIO_PIN_SET);
+
+
+    if (USR_getBatteryLevel() == CRITICAL) {
+        USR_LedBlink(3);
+        USR_PowerOff();
+    }
+    USR_CheckSD();
+    USR_InitExtADC();
+
+    HAL_Delay(2000);
+    HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)
-  {
+    while (1) {
 
   /* USER CODE END WHILE */
 
   /* USER CODE BEGIN 3 */
-
-  }
+    }
   /* USER CODE END 3 */
 
 }
@@ -247,7 +424,7 @@ static void MX_ADC1_Init(void)
     /**Common config 
     */
   hadc1.Instance = ADC1;
-  hadc1.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV128;
+  hadc1.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV16;
   hadc1.Init.Resolution = ADC_RESOLUTION_12B;
   hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
   hadc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
@@ -323,7 +500,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.Direction = SPI_DIRECTION_2LINES;
   hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
-  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi1.Init.CLKPhase = SPI_PHASE_2EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
   hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_64;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
@@ -331,7 +508,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
   hspi1.Init.CRCPolynomial = 7;
   hspi1.Init.CRCLength = SPI_CRC_LENGTH_DATASIZE;
-  hspi1.Init.NSSPMode = SPI_NSS_PULSE_ENABLE;
+  hspi1.Init.NSSPMode = SPI_NSS_PULSE_DISABLE;
   if (HAL_SPI_Init(&hspi1) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
@@ -564,9 +741,13 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : SD_DETECT_Pin */
   GPIO_InitStruct.Pin = SD_DETECT_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(SD_DETECT_GPIO_Port, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI3_IRQn, 9, 0);
+  HAL_NVIC_EnableIRQ(EXTI3_IRQn);
 
 }
 
@@ -583,9 +764,14 @@ static void MX_GPIO_Init(void)
 void _Error_Handler(char *file, int line)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
+    /* User can add his own implementation to report the HAL error return state
+     */
+  char error[50];
+  sprintf(error, "\nError in file: %s:%d\n", file, line);
   while(1)
   {
+  CDC_Transmit_FS((uint8_t *) error, strlen(error));
+  HAL_Delay(1000);
   }
   /* USER CODE END Error_Handler_Debug */
 }
@@ -601,8 +787,9 @@ void _Error_Handler(char *file, int line)
 void assert_failed(uint8_t* file, uint32_t line)
 { 
   /* USER CODE BEGIN 6 */
-  /* User can add his own implementation to report the file name and line number,
-     tex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+    /* User can add his own implementation to report the file name and line
+       number, tex: printf("Wrong parameters value: file %s on line %d\r\n",
+       file, line) */
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */

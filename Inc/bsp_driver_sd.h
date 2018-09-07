@@ -92,27 +92,31 @@
 /* USER CODE END 0 */ 
 #else
 /* USER CODE BEGIN BSP_H_CODE */
-/* Exported functions --------------------------------------------------------*/   
+/* Exported functions --------------------------------------------------------*/
 uint8_t BSP_SD_Init(void);
 uint8_t BSP_SD_ITConfig(void);
-void    BSP_SD_DetectIT(void);
-void    BSP_SD_DetectCallback(void);
-uint8_t BSP_SD_ReadBlocks(uint32_t *pData, uint32_t ReadAddr, uint32_t NumOfBlocks, uint32_t Timeout);
-uint8_t BSP_SD_WriteBlocks(uint32_t *pData, uint32_t WriteAddr, uint32_t NumOfBlocks, uint32_t Timeout);
-uint8_t BSP_SD_ReadBlocks_DMA(uint32_t *pData, uint32_t ReadAddr, uint32_t NumOfBlocks);
-uint8_t BSP_SD_WriteBlocks_DMA(uint32_t *pData, uint32_t WriteAddr, uint32_t NumOfBlocks);
+void BSP_SD_DetectIT(void);
+void BSP_SD_DetectCallback(void);
+uint8_t BSP_SD_ReadBlocks(uint32_t *pData, uint32_t ReadAddr,
+			  uint32_t NumOfBlocks, uint32_t Timeout);
+uint8_t BSP_SD_WriteBlocks(uint32_t *pData, uint32_t WriteAddr,
+			   uint32_t NumOfBlocks, uint32_t Timeout);
+uint8_t BSP_SD_ReadBlocks_DMA(uint32_t *pData, uint32_t ReadAddr,
+			      uint32_t NumOfBlocks);
+uint8_t BSP_SD_WriteBlocks_DMA(uint32_t *pData, uint32_t WriteAddr,
+			       uint32_t NumOfBlocks);
 uint8_t BSP_SD_Erase(uint32_t StartAddr, uint32_t EndAddr);
 uint8_t BSP_SD_GetCardState(void);
-void    BSP_SD_GetCardInfo(BSP_SD_CardInfo *CardInfo);
+void BSP_SD_GetCardInfo(BSP_SD_CardInfo *CardInfo);
 uint8_t BSP_SD_IsDetected(void);
 /* USER CODE END BSP_H_CODE */
 #endif
 /* USER CODE BEGIN CallBacksSection_H */
-/* These functions can be modified in case the current settings (eg. interrupt priority)
-   need to be changed for specific application needs */
-__weak void    BSP_SD_AbortCallback(void);
-__weak void    BSP_SD_WriteCpltCallback(void);
-__weak void    BSP_SD_ReadCpltCallback(void);
+/* These functions can be modified in case the current settings (eg. interrupt
+   priority) need to be changed for specific application needs */
+__weak void BSP_SD_AbortCallback(void);
+__weak void BSP_SD_WriteCpltCallback(void);
+__weak void BSP_SD_ReadCpltCallback(void);
 /* USER CODE END CallBacksSection_H */   
 #ifdef __cplusplus
 }

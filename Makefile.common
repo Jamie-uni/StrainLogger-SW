@@ -39,5 +39,15 @@ debug:
 dos2unix:
 	./dos2unix.sh
 
+format:
+	@for src in ./Src/*.c; do \
+			echo "Formatting $$src..." ; \
+			clang-format -i "$$src" ; \
+		done
+	@for src in ./Inc/*.h; do \
+			echo "Formatting $$src..." ; \
+			clang-format -i "$$src" ; \
+		done
+	@echo "Done"
 # USER CODE END DEBUG
 

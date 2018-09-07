@@ -64,26 +64,25 @@ void MX_FATFS_Init(void)
 
   /* USER CODE BEGIN Init */
 
-
-    uint32_t wbytes; /* File write counts */
+    uint32_t wbytes;				    /* File write counts */
     uint8_t wtext[] = "text to write logical disk"; /* File write buffer */
-    if(retSD == 0)
-          {
-            if(f_mount(&SDFatFS, SDPath, 1) == FR_OK)
-            {
-              if(f_open(&SDFile, "STRAIN2.TXT", FA_CREATE_ALWAYS | FA_WRITE) == FR_OK)
-              {
-                for(int i = 0; i < 0x100; i++){
-                    HAL_GPIO_TogglePin(SYNC_GPIO_Port, SYNC_Pin);
-                    if(f_write(&SDFile, wtext, sizeof(wtext), (void *)&wbytes) != FR_OK) break;
-                }
-                  f_close(&SDFile);
-              }
-            }
-          }
-        FATFS_UnLinkDriver(SDPath);
+    if (retSD == 0) {
+	if (f_mount(&SDFatFS, SDPath, 1) == FR_OK) {
+	    if (f_open(&SDFile, "STRAIN2.TXT", FA_CREATE_ALWAYS | FA_WRITE) ==
+		FR_OK) {
+		for (int i = 0; i < 0x100; i++) {
+		    HAL_GPIO_TogglePin(SYNC_GPIO_Port, SYNC_Pin);
+		    if (f_write(&SDFile, wtext, sizeof(wtext),
+				(void *)&wbytes) != FR_OK)
+			break;
+		}
+		f_close(&SDFile);
+	    }
+	}
+    }
+    FATFS_UnLinkDriver(SDPath);
 
-  /* additional user code for init */     
+    /* additional user code for init */
   /* USER CODE END Init */
 }
 
@@ -95,12 +94,12 @@ void MX_FATFS_Init(void)
 DWORD get_fattime(void)
 {
   /* USER CODE BEGIN get_fattime */
-  return 0;
+    return 0;
   /* USER CODE END get_fattime */  
 }
 
 /* USER CODE BEGIN Application */
-     
+
 /* USER CODE END Application */
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

@@ -74,6 +74,7 @@ TIM_HandleTypeDef htim6;
 /* Private variables ---------------------------------------------------------*/
 volatile RecSessionStateEnum recSessionState;
 volatile uint8_t adcDataReady;
+int32_t adcValue[4];
 /* volatile uint32_t */
 
 /* USER CODE END PV */
@@ -95,7 +96,8 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
 
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
-
+void USR_InitExtADC(void);
+void USR_ExtADC_Read(int32_t adcValue[4]);
 /* USER CODE END PFP */
 
 /* USER CODE BEGIN 0 */
@@ -165,15 +167,21 @@ BattStatusEnum USR_getBatteryLevel(void)
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *timHandle)
 {
     if (timHandle == &htim6) {
-	if (USR_getBatteryLevel() == CRITICAL) {
-	    recSessionState = POWER_DOWN;
-	}
+    //TODO ENABLE THIS
+	/* if (USR_getBatteryLevel() == CRITICAL) { */
+	/*     recSessionState = POWER_DOWN; */
+	/* } */
     }
 }
 void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *timHandle)
 {
     if (timHandle == &htim1) {
+        if (recSessionState == ACTIVE_SESSION){
         HAL_GPIO_TogglePin(SYNC_GPIO_Port, SYNC_Pin);
+            USR_ExtADC_Read(adcValue);
+            adcDataReady = 1;
+        HAL_GPIO_TogglePin(SYNC_GPIO_Port, SYNC_Pin);
+        }
     }
 }
 
@@ -213,12 +221,13 @@ void USR_InitExtADC(void){
 
         //Configure ADC
         pTxDat[0] = 0b01000011;
-        // AINP = AIN1, AINN = AIN2, gain = 128, PGA enabled
-        pTxDat[1] = 0x3E;
-        // DR = 2000 SPS, normal mode, continuous conversion mode
-        pTxDat[2] = 0xC4;
-        // External reference (REFP1, REFN1), simultaneous 50-Hz and 60-Hz
-        pTxDat[3] = 0x98;
+        // AINP = AIN1, AINN = AIN2, gain = 64, PGA enabled
+        /* pTxDat[1] = 0x3E; */
+        pTxDat[1] = 0x3C;
+        // DR = 20 SPS, normal mode, continuous conversion mode
+        pTxDat[2] = 0x04;
+        // AVDD Reference, simultaneous 50-Hz and 60-Hz
+        pTxDat[3] = 0xD8;
         // No IDACs used
         pTxDat[4] = 0x00;
         HAL_GPIO_WritePin(ST_CS_GPIO_PORTS[i], ST_CS_PINS[i], GPIO_PIN_RESET);
@@ -237,7 +246,7 @@ void USR_InitExtADC(void){
         HAL_SPI_TransmitReceive(&hspi1, pTxDat, pRxDat, 5, HAL_MAX_DELAY);
         HAL_Delay(1);
         HAL_GPIO_WritePin(ST_CS_GPIO_PORTS[i], ST_CS_PINS[i], GPIO_PIN_SET);
-        if (pRxDat[1] != 0x3E) {
+        if (pRxDat[1] != 0x3c) {
             USR_LedBlink(6);
             _Error_Handler(__FILE__, __LINE__);
         }
@@ -344,46 +353,65 @@ int main(void)
     }
     USR_CheckSD();
     USR_InitExtADC();
+    recSessionState = NEW_SESSION;
 
-    HAL_Delay(1000);
-    /* __HAL_GPIO_EXTI_CLEAR_IT(EXTI9_5_IRQn); */
-    /* HAL_NVIC_EnableIRQ(EXTI9_5_IRQn); */
+    while (recSessionState == NEW_SESSION){
+        HAL_Delay(100);
+        __HAL_GPIO_EXTI_CLEAR_IT(EXTI9_5_IRQn);
+        HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
-  /* USER CODE END 2 */
+      /* USER CODE END 2 */
 
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
+      /* Infinite loop */
+      /* USER CODE BEGIN WHILE */
 
-    f_open(&SDFile, "STRAIN.TXT", FA_CREATE_ALWAYS | FA_WRITE);
+        uint32_t wbytes;				    /* File write counts */
+        char adcstr[100];
+        RTC_TimeTypeDef rtcTime;
+        RTC_DateTypeDef rtcDate;
 
-    USR_LedBlink(1);
-    uint32_t wbytes;				    /* File write counts */
-    int32_t adcValue[4];
-    char adcstr[100];
-    recSessionState = ACTIVE_SESSION;
-    /* for (int i = 0; i<100; i++) { */
-    while (recSessionState == ACTIVE_SESSION){
+        HAL_RTC_GetTime(&hrtc, &rtcTime, RTC_FORMAT_BIN);
+        HAL_RTC_GetDate(&hrtc, &rtcDate, RTC_FORMAT_BIN);
 
-        memset(adcValue, 0, sizeof(adcValue));
-        HAL_Delay(50);
-        USR_ExtADC_Read(adcValue);
-        sprintf(adcstr, "%ld\n", (long) adcValue[0]);
-        /* sprintf(adcstr, "%ld,%ld,%ld,%ld\r\n", (long) adcValue[0],(long) adcValue[1],(long) adcValue[2],(long) adcValue[3]); */
-        CDC_Transmit_FS((uint8_t*)adcstr, strlen(adcstr));
-		f_write(&SDFile, adcstr, strlen(adcstr), (void *)&wbytes);
+        sprintf(adcstr, "STRAIN-LOG_%d-%d-%d_%d%d%d.TXT", rtcDate.Year, rtcDate.Month, rtcDate.Date, rtcTime.Hours,rtcTime.Minutes,rtcTime.Seconds);
+        f_open(&SDFile, adcstr, FA_CREATE_ALWAYS | FA_WRITE);
 
-  /* USER CODE END WHILE */
+        USR_LedBlink(1);
 
-  /* USER CODE BEGIN 3 */
+        long samples = 0;
+
+        recSessionState = ACTIVE_SESSION;
+        while (recSessionState == ACTIVE_SESSION){
+
+            if (adcDataReady == 1){
+                HAL_GPIO_TogglePin(SYNC_GPIO_Port, SYNC_Pin);
+                sprintf(adcstr, "%ld,%ld,%ld,%ld\r\n", (long) adcValue[0],samples++,(long) adcValue[2],(long) adcValue[3]);
+                CDC_Transmit_FS((uint8_t*)adcstr, strlen(adcstr));
+                f_write(&SDFile, adcstr, strlen(adcstr), (void *)&wbytes);
+                HAL_GPIO_TogglePin(SYNC_GPIO_Port, SYNC_Pin);
+                adcDataReady = 0;
+            }
+
+        }
+        f_sync(&SDFile);
+        f_close(&SDFile);
+        HAL_Delay(1000);
+        if (HAL_GPIO_ReadPin(BUTTON_GPIO_Port,BUTTON_Pin)==GPIO_PIN_SET){
+            recSessionState = POWER_DOWN;
+        }
+
+      /* USER CODE END WHILE */
+      /* USER CODE BEGIN 3 */
     }
 
-    f_close(&SDFile);
+    HAL_Delay(500);
     FATFS_UnLinkDriver(SDPath);
+    USR_LedBlink(5);
+    USR_PowerOff();
     while(1) {
         HAL_Delay(2000);
         USR_LedBlink(2);
     }
-    /* USR_PowerOff(); */
   /* USER CODE END 3 */
 
 }
@@ -542,7 +570,7 @@ static void MX_SDMMC1_SD_Init(void)
   hsd1.Init.ClockPowerSave = SDMMC_CLOCK_POWER_SAVE_DISABLE;
   hsd1.Init.BusWide = SDMMC_BUS_WIDE_1B;
   hsd1.Init.HardwareFlowControl = SDMMC_HARDWARE_FLOW_CONTROL_DISABLE;
-  hsd1.Init.ClockDiv = 2;
+  hsd1.Init.ClockDiv = 4;
 
 }
 
@@ -582,9 +610,9 @@ static void MX_TIM1_Init(void)
   TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig;
 
   htim1.Instance = TIM1;
-  htim1.Init.Prescaler = 0;
+  htim1.Init.Prescaler = 8;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 2072;
+  htim1.Init.Period = HTIM1_PERIOD;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -614,7 +642,7 @@ static void MX_TIM1_Init(void)
   }
 
   sConfigOC.OCMode = TIM_OCMODE_TOGGLE;
-  sConfigOC.Pulse = 1036;
+  sConfigOC.Pulse = HTIM1_OC;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;

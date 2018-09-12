@@ -113,7 +113,9 @@ void USR_LedBlink(int i){
 void USR_PowerOff(void){
 	HAL_GPIO_WritePin(V_LATCH_GPIO_Port, V_LATCH_Pin, GPIO_PIN_RESET);
     HAL_Delay(3000);
-    NVIC_SystemReset();
+
+    //TODO ENABLE THIS
+    /* NVIC_SystemReset(); */
 }
 
 
@@ -295,6 +297,15 @@ void USR_ExtADC_Read(int32_t adcValue[4]){
 
 
 }
+uint8_t USR_Button_Status(void){
+        uint8_t count = 0;
+        for (int i = 0; i < 100; i++){
+           if(HAL_GPIO_ReadPin(BUTTON_GPIO_Port,BUTTON_Pin)==GPIO_PIN_SET) count++;
+           HAL_Delay(2);
+        }
+        if (count > 15) return 1;
+        else return 0;
+}
 
 /* USER CODE END 0 */
 
@@ -343,6 +354,7 @@ int main(void)
     HAL_TIM_OC_Start_IT(&htim1, TIM_CHANNEL_3);
     HAL_TIM_OC_Start(&htim2, TIM_CHANNEL_1);
     HAL_TIM_Base_Start_IT(&htim6);
+    hrtc_ptr = &hrtc; // allow usbd_cdc_if access to rtc
 
     HAL_GPIO_WritePin(LED_STAT_GPIO_Port, LED_STAT_Pin, GPIO_PIN_SET);
 
@@ -360,10 +372,10 @@ int main(void)
         __HAL_GPIO_EXTI_CLEAR_IT(EXTI9_5_IRQn);
         HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
-      /* USER CODE END 2 */
+  /* USER CODE END 2 */
 
-      /* Infinite loop */
-      /* USER CODE BEGIN WHILE */
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
 
         uint32_t wbytes;				    /* File write counts */
         char adcstr[100];
@@ -373,10 +385,15 @@ int main(void)
         HAL_RTC_GetTime(&hrtc, &rtcTime, RTC_FORMAT_BIN);
         HAL_RTC_GetDate(&hrtc, &rtcDate, RTC_FORMAT_BIN);
 
-        sprintf(adcstr, "STRAIN-LOG_%d-%d-%d_%d%d%d.TXT", rtcDate.Year, rtcDate.Month, rtcDate.Date, rtcTime.Hours,rtcTime.Minutes,rtcTime.Seconds);
-        f_open(&SDFile, adcstr, FA_CREATE_ALWAYS | FA_WRITE);
+        sprintf(adcstr, "STRAIN-LOG_%02d-%02d_%02d;%02d;%02d.TXT",rtcDate.Month, rtcDate.Date, rtcTime.Hours,rtcTime.Minutes,rtcTime.Seconds);
+        if (f_open(&SDFile, adcstr, FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
+        {
+            USR_CheckSD();
+            _Error_Handler(__FILE__, __LINE__);
+        }
 
-        USR_LedBlink(1);
+
+        USR_LedBlink(2);
 
         long samples = 0;
 
@@ -396,21 +413,25 @@ int main(void)
         f_sync(&SDFile);
         f_close(&SDFile);
         HAL_Delay(1000);
-        if (HAL_GPIO_ReadPin(BUTTON_GPIO_Port,BUTTON_Pin)==GPIO_PIN_SET){
+
+        if (USR_Button_Status() == 1){
             recSessionState = POWER_DOWN;
         }
 
-      /* USER CODE END WHILE */
-      /* USER CODE BEGIN 3 */
+  /* USER CODE END WHILE */
+
+  /* USER CODE BEGIN 3 */
     }
 
     HAL_Delay(500);
     FATFS_UnLinkDriver(SDPath);
     USR_LedBlink(5);
-    USR_PowerOff();
+    /* USR_PowerOff(); */
+	HAL_GPIO_WritePin(V_LATCH_GPIO_Port, V_LATCH_Pin, GPIO_PIN_RESET);
+    uint8_t cdcstr[] = "To set time, use the format Tyyyymmddhhmmss\n";
+    CDC_Transmit_FS(cdcstr, strlen((char*)cdcstr));
     while(1) {
-        HAL_Delay(2000);
-        USR_LedBlink(2);
+        USR_LedBlink(1);
     }
   /* USER CODE END 3 */
 
@@ -570,7 +591,7 @@ static void MX_SDMMC1_SD_Init(void)
   hsd1.Init.ClockPowerSave = SDMMC_CLOCK_POWER_SAVE_DISABLE;
   hsd1.Init.BusWide = SDMMC_BUS_WIDE_1B;
   hsd1.Init.HardwareFlowControl = SDMMC_HARDWARE_FLOW_CONTROL_DISABLE;
-  hsd1.Init.ClockDiv = 4;
+  hsd1.Init.ClockDiv = 2;
 
 }
 
@@ -855,11 +876,10 @@ void _Error_Handler(char *file, int line)
      */
   char error[50];
   sprintf(error, "\nError in file: %s:%d\n", file, line);
-  while(1)
-  {
   CDC_Transmit_FS((uint8_t *) error, strlen(error));
   HAL_Delay(1000);
-  }
+  USR_PowerOff();
+  while(1);
   /* USER CODE END Error_Handler_Debug */
 }
 

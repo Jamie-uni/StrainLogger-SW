@@ -271,6 +271,15 @@ static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
     }
 
     return (USBD_OK);
+}
+
+void slice_str(const char * str, char * buffer, size_t start, size_t end)
+{
+    size_t j = 0;
+    for ( size_t i = start; i <= end; ++i ) {
+        buffer[j++] = str[i];
+    }
+    buffer[j] = 0;
   /* USER CODE END 5 */
 }
 
@@ -291,9 +300,34 @@ static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
 static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 {
   /* USER CODE BEGIN 6 */
+
+    //RTC Set command must take format: Tyyyymmddhhmmss
+    char parsebuff[20];
+    RTC_TimeTypeDef rtcTime;
+    RTC_DateTypeDef rtcDate;
+    if (Buf[0]=='T' && *Len==16){
+       slice_str((char *)Buf, parsebuff, 2, 4);
+       rtcDate.Year=atoi(parsebuff);
+       slice_str((char *)Buf, parsebuff, 5, 6);
+       rtcDate.Month=atoi(parsebuff);
+       slice_str((char *)Buf, parsebuff, 7, 8);
+       rtcDate.Date=atoi(parsebuff);
+       slice_str((char *)Buf, parsebuff, 9, 10);
+       rtcTime.Hours=atoi(parsebuff);
+       slice_str((char *)Buf, parsebuff, 11, 12);
+       rtcTime.Minutes=atoi(parsebuff);
+       slice_str((char *)Buf, parsebuff, 13, 14);
+       rtcTime.Seconds=atoi(parsebuff);
+        HAL_RTC_SetTime(hrtc_ptr, &rtcTime, RTC_FORMAT_BIN);
+        HAL_RTC_SetDate(hrtc_ptr, &rtcDate, RTC_FORMAT_BIN);
+        uint8_t cdcstr[] = "RTC set\n";
+        CDC_Transmit_FS(cdcstr, strlen((char*)cdcstr));
+
+    }
     USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &Buf[0]);
     USBD_CDC_ReceivePacket(&hUsbDeviceFS);
     return (USBD_OK);
+
   /* USER CODE END 6 */
 }
 

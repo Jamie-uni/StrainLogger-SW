@@ -55,6 +55,8 @@
 /* USER CODE BEGIN Includes */
 #include "usbd_cdc_if.h"
 
+#define BUFF_SIZE 100
+
 /* USER CODE END Includes */
 
 /* Private variables ---------------------------------------------------------*/
@@ -73,9 +75,11 @@ TIM_HandleTypeDef htim6;
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
 volatile RecSessionStateEnum recSessionState;
-volatile uint8_t adcDataReady;
-int32_t adcValue[4];
-/* volatile uint32_t */
+volatile uint8_t adcValues_buffer_toggle;
+volatile uint8_t adcValues_buffer0_ready;
+volatile uint8_t adcValues_buffer1_ready;
+int32_t adcValues[2][BUFF_SIZE][4];
+volatile int adcValues_write_index;
 
 /* USER CODE END PV */
 
@@ -91,8 +95,6 @@ static void MX_SDMMC1_SD_Init(void);
 static void MX_RTC_Init(void);
 
 void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
-                                
-                                
 
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
@@ -114,8 +116,7 @@ void USR_PowerOff(void){
 	HAL_GPIO_WritePin(V_LATCH_GPIO_Port, V_LATCH_Pin, GPIO_PIN_RESET);
     HAL_Delay(3000);
 
-    //TODO ENABLE THIS
-    /* NVIC_SystemReset(); */
+    NVIC_SystemReset();
 }
 
 
@@ -169,20 +170,36 @@ BattStatusEnum USR_getBatteryLevel(void)
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *timHandle)
 {
     if (timHandle == &htim6) {
-    //TODO ENABLE THIS
-	/* if (USR_getBatteryLevel() == CRITICAL) { */
-	/*     recSessionState = POWER_DOWN; */
-	/* } */
+	if (USR_getBatteryLevel() == CRITICAL) {
+	    recSessionState = POWER_DOWN;
+	}
     }
 }
 void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *timHandle)
 {
     if (timHandle == &htim1) {
+        /* char adcstr[100]; */
         if (recSessionState == ACTIVE_SESSION){
-        HAL_GPIO_TogglePin(SYNC_GPIO_Port, SYNC_Pin);
-            USR_ExtADC_Read(adcValue);
-            adcDataReady = 1;
-        HAL_GPIO_TogglePin(SYNC_GPIO_Port, SYNC_Pin);
+            HAL_GPIO_TogglePin(SYNC_GPIO_Port, SYNC_Pin);
+            USR_ExtADC_Read(adcValues[adcValues_buffer_toggle][adcValues_write_index]);
+            /* sprintf(adcstr, "%ld,%ld,%ld,%ld\r\n", \ */
+            /*         (long) adcValues[adcValues_buffer_toggle][adcValues_write_index][0],\ */
+            /*         (long) adcValues[adcValues_buffer_toggle][adcValues_write_index][1],\ */
+            /*         (long) adcValues[adcValues_buffer_toggle][adcValues_write_index][2],\ */
+            /*         (long) adcValues[adcValues_buffer_toggle][adcValues_write_index][3]); */
+            /* CDC_Transmit_FS((uint8_t*)adcstr, strlen(adcstr)); */
+            if (++adcValues_write_index >= BUFF_SIZE){
+                adcValues_write_index = 0;
+
+                if (adcValues_buffer_toggle == 0)
+                    adcValues_buffer0_ready = 1;
+                if (adcValues_buffer_toggle == 1)
+                    adcValues_buffer1_ready = 1;
+
+                adcValues_buffer_toggle = !adcValues_buffer_toggle;
+
+            }
+            HAL_GPIO_TogglePin(SYNC_GPIO_Port, SYNC_Pin);
         }
     }
 }
@@ -225,11 +242,11 @@ void USR_InitExtADC(void){
         pTxDat[0] = 0b01000011;
         // AINP = AIN1, AINN = AIN2, gain = 64, PGA enabled
         /* pTxDat[1] = 0x3E; */
-        pTxDat[1] = 0x3C;
+        pTxDat[1] = 0x0C;
         // DR = 20 SPS, normal mode, continuous conversion mode
-        pTxDat[2] = 0x04;
+        pTxDat[2] = 0xC4;
         // AVDD Reference, simultaneous 50-Hz and 60-Hz
-        pTxDat[3] = 0xD8;
+        pTxDat[3] = 0xC0;
         // No IDACs used
         pTxDat[4] = 0x00;
         HAL_GPIO_WritePin(ST_CS_GPIO_PORTS[i], ST_CS_PINS[i], GPIO_PIN_RESET);
@@ -248,7 +265,7 @@ void USR_InitExtADC(void){
         HAL_SPI_TransmitReceive(&hspi1, pTxDat, pRxDat, 5, HAL_MAX_DELAY);
         HAL_Delay(1);
         HAL_GPIO_WritePin(ST_CS_GPIO_PORTS[i], ST_CS_PINS[i], GPIO_PIN_SET);
-        if (pRxDat[1] != 0x3c) {
+        if (pRxDat[1] != 0x0c) {
             USR_LedBlink(6);
             _Error_Handler(__FILE__, __LINE__);
         }
@@ -351,9 +368,9 @@ int main(void)
 
     /* HAL_NVIC_SetPriority(TIM1_CC_IRQn, 2, 0); // Set timer1 priority */
     USR_ADC1_Init();
-    HAL_TIM_OC_Start_IT(&htim1, TIM_CHANNEL_3);
-    HAL_TIM_OC_Start(&htim2, TIM_CHANNEL_1);
-    HAL_TIM_Base_Start_IT(&htim6);
+    /* HAL_TIM_OC_Start_IT(&htim1, TIM_CHANNEL_3); */
+    /* HAL_TIM_OC_Start(&htim2, TIM_CHANNEL_1); */
+    /* HAL_TIM_Base_Start_IT(&htim6); */
     hrtc_ptr = &hrtc; // allow usbd_cdc_if access to rtc
 
     HAL_GPIO_WritePin(LED_STAT_GPIO_Port, LED_STAT_Pin, GPIO_PIN_SET);
@@ -367,16 +384,15 @@ int main(void)
     USR_InitExtADC();
     recSessionState = NEW_SESSION;
 
-    while (recSessionState == NEW_SESSION){
-        HAL_Delay(100);
-        __HAL_GPIO_EXTI_CLEAR_IT(EXTI9_5_IRQn);
-        HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
-
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 
+    while (recSessionState == NEW_SESSION){
+        HAL_Delay(100);
+        __HAL_GPIO_EXTI_CLEAR_IT(EXTI9_5_IRQn);
+        HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
         uint32_t wbytes;				    /* File write counts */
         char adcstr[100];
         RTC_TimeTypeDef rtcTime;
@@ -386,8 +402,7 @@ int main(void)
         HAL_RTC_GetDate(&hrtc, &rtcDate, RTC_FORMAT_BIN);
 
         sprintf(adcstr, "STRAIN-LOG_%02d-%02d_%02d;%02d;%02d.TXT",rtcDate.Month, rtcDate.Date, rtcTime.Hours,rtcTime.Minutes,rtcTime.Seconds);
-        if (f_open(&SDFile, adcstr, FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
-        {
+        if (f_open(&SDFile, adcstr, FA_CREATE_ALWAYS | FA_WRITE) != FR_OK){
             USR_CheckSD();
             _Error_Handler(__FILE__, __LINE__);
         }
@@ -395,21 +410,44 @@ int main(void)
 
         USR_LedBlink(2);
 
-        long samples = 0;
+        int samples = 0;
 
         recSessionState = ACTIVE_SESSION;
+
+        FRESULT fatfsResult;
         while (recSessionState == ACTIVE_SESSION){
 
-            if (adcDataReady == 1){
-                HAL_GPIO_TogglePin(SYNC_GPIO_Port, SYNC_Pin);
-                sprintf(adcstr, "%ld,%ld,%ld,%ld\r\n", (long) adcValue[0],samples++,(long) adcValue[2],(long) adcValue[3]);
-                CDC_Transmit_FS((uint8_t*)adcstr, strlen(adcstr));
-                f_write(&SDFile, adcstr, strlen(adcstr), (void *)&wbytes);
-                HAL_GPIO_TogglePin(SYNC_GPIO_Port, SYNC_Pin);
-                adcDataReady = 0;
+                HAL_Delay(1);
+                    sprintf(adcstr, "%d Testing\r\n", samples++);
+                fatfsResult = f_write(&SDFile, adcstr, strlen(adcstr), (void *)&wbytes);
+                if (fatfsResult != FR_OK){
+                    _Error_Handler(__FILE__, __LINE__);
+                }
             }
 
-        }
+        /* while (recSessionState == ACTIVE_SESSION){ */
+
+        /*     if (adcValues_buffer0_ready){ */
+        /*         for (int i=0; i < BUFF_SIZE; i++){ */
+        /*             sprintf(adcstr, "%ld,%ld,%ld,%ld\r\n", (long) adcValues[0][i][0],(long) adcValues[0][i][1],(long) adcValues[0][i][2],(long) adcValues[0][i][3]); */
+        /*             fatfsResult = f_write(&SDFile, adcstr, strlen(adcstr), (void *)&wbytes); */
+        /*             if (fatfsResult != FR_OK){ */
+        /*                 _Error_Handler(__FILE__, __LINE__); */
+        /*             } */
+        /*         } */
+        /*     } */
+
+        /*     if (adcValues_buffer0_ready){ */
+        /*         for (int i=0; i < 500; i++){ */
+        /*             sprintf(adcstr, "%ld,%ld,%ld,%ld\r\n", (long) adcValues[0][i][0],(long) adcValues[0][i][1],(long) adcValues[0][i][2],(long) adcValues[0][i][3]); */
+        /*             fatfsResult = f_write(&SDFile, adcstr, strlen(adcstr), (void *)&wbytes); */
+        /*             if (fatfsResult != FR_OK){ */
+        /*                 _Error_Handler(__FILE__, __LINE__); */
+        /*             } */
+        /*         } */
+        /*     } */
+
+        /* } */
         f_sync(&SDFile);
         f_close(&SDFile);
         HAL_Delay(1000);
@@ -591,7 +629,7 @@ static void MX_SDMMC1_SD_Init(void)
   hsd1.Init.ClockPowerSave = SDMMC_CLOCK_POWER_SAVE_DISABLE;
   hsd1.Init.BusWide = SDMMC_BUS_WIDE_1B;
   hsd1.Init.HardwareFlowControl = SDMMC_HARDWARE_FLOW_CONTROL_DISABLE;
-  hsd1.Init.ClockDiv = 2;
+  hsd1.Init.ClockDiv = 6;
 
 }
 

@@ -64,24 +64,11 @@ void MX_FATFS_Init(void)
 
   /* USER CODE BEGIN Init */
 
-    if (retSD == 0) {
-        if (f_mount(&SDFatFS, SDPath, 1) == FR_OK) {}
-    }
+    if (retSD != 0) Error_Handler();
+    if (f_mount(&SDFatFS, SDPath, 1) != FR_OK) Error_Handler();
 
     /* additional user code for init */
   /* USER CODE END Init */
-}
-
-/**
-  * @brief  Gets Time from RTC 
-  * @param  None
-  * @retval Time in DWORD
-  */
-DWORD get_fattime(void)
-{
-  /* USER CODE BEGIN get_fattime */
-    return 0;
-  /* USER CODE END get_fattime */  
 }
 
 /* USER CODE BEGIN Application */

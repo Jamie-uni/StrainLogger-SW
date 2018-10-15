@@ -1,52 +1,10 @@
-
 /**
   ******************************************************************************
   * @file           : main.c
   * @brief          : Main program body
   ******************************************************************************
-  * This notice applies to any and all portions of this file
-  * that are not between comment pairs USER CODE BEGIN and
-  * USER CODE END. Other portions of this file, whether 
-  * inserted by the user or by software development tools
-  * are owned by their respective copyright owners.
-  *
-  * Copyright (c) 2018 STMicroelectronics International N.V. 
-  * All rights reserved.
-  *
-  * Redistribution and use in source and binary forms, with or without 
-  * modification, are permitted, provided that the following conditions are met:
-  *
-  * 1. Redistribution of source code must retain the above copyright notice, 
-  *    this list of conditions and the following disclaimer.
-  * 2. Redistributions in binary form must reproduce the above copyright notice,
-  *    this list of conditions and the following disclaimer in the documentation
-  *    and/or other materials provided with the distribution.
-  * 3. Neither the name of STMicroelectronics nor the names of other 
-  *    contributors to this software may be used to endorse or promote products 
-  *    derived from this software without specific written permission.
-  * 4. This software, including modifications and/or derivative works of this 
-  *    software, must execute solely and exclusively on microcontroller or
-  *    microprocessor devices manufactured by or for STMicroelectronics.
-  * 5. Redistribution and use of this software other than as permitted under 
-  *    this license is void and will automatically terminate your rights under 
-  *    this license. 
-  *
-  * THIS SOFTWARE IS PROVIDED BY STMICROELECTRONICS AND CONTRIBUTORS "AS IS" 
-  * AND ANY EXPRESS, IMPLIED OR STATUTORY WARRANTIES, INCLUDING, BUT NOT 
-  * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A 
-  * PARTICULAR PURPOSE AND NON-INFRINGEMENT OF THIRD PARTY INTELLECTUAL PROPERTY
-  * RIGHTS ARE DISCLAIMED TO THE FULLEST EXTENT PERMITTED BY LAW. IN NO EVENT 
-  * SHALL STMICROELECTRONICS OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
-  * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-  * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, 
-  * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF 
-  * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING 
-  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
-  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-  *
-  ******************************************************************************
-  */
-/* Includes ------------------------------------------------------------------*/
+
+  Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "stm32l4xx_hal.h"
 #include "fatfs.h"
@@ -75,11 +33,7 @@ TIM_HandleTypeDef htim6;
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
 volatile RecSessionStateEnum recSessionState;
-volatile uint8_t adcValues_buffer_toggle;
-volatile uint8_t adcValues_buffer0_ready;
-volatile uint8_t adcValues_buffer1_ready;
-int32_t adcValues[2][BUFF_SIZE][4];
-volatile int adcValues_write_index;
+volatile uint8_t adcDataReady;
 
 /* USER CODE END PV */
 
@@ -109,7 +63,6 @@ void USR_LedBlink(int i){
 	    HAL_GPIO_TogglePin(LED_STAT_GPIO_Port, LED_STAT_Pin);
 	    HAL_Delay(200);
 	}
-    /* HAL_GPIO_WritePin(LED_STAT_GPIO_Port, LED_STAT_Pin, GPIO_PIN_RESET); */
 }
 
 void USR_PowerOff(void){
@@ -158,12 +111,10 @@ BattStatusEnum USR_getBatteryLevel(void)
     } while (hstatus != HAL_OK);
 
     int adc_value = HAL_ADC_GetValue(&hadc1);
-    /* HAL_GPIO_TogglePin(SYNC_GPIO_Port, SYNC_Pin); */
     if (adc_value > 1613)
 	return FULL; // 4.0V level
     if (adc_value < 1411)
 	return CRITICAL; // 3.5V level
-    /* if (adc_value > 1531) return LOW; // 3.7V level */
     return LOW;
 }
 
@@ -178,29 +129,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *timHandle)
 void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *timHandle)
 {
     if (timHandle == &htim1) {
-        /* char adcstr[100]; */
         if (recSessionState == ACTIVE_SESSION){
-            HAL_GPIO_TogglePin(SYNC_GPIO_Port, SYNC_Pin);
-            USR_ExtADC_Read(adcValues[adcValues_buffer_toggle][adcValues_write_index]);
-            /* sprintf(adcstr, "%ld,%ld,%ld,%ld\r\n", \ */
-            /*         (long) adcValues[adcValues_buffer_toggle][adcValues_write_index][0],\ */
-            /*         (long) adcValues[adcValues_buffer_toggle][adcValues_write_index][1],\ */
-            /*         (long) adcValues[adcValues_buffer_toggle][adcValues_write_index][2],\ */
-            /*         (long) adcValues[adcValues_buffer_toggle][adcValues_write_index][3]); */
-            /* CDC_Transmit_FS((uint8_t*)adcstr, strlen(adcstr)); */
-            if (++adcValues_write_index >= BUFF_SIZE){
-                adcValues_write_index = 0;
-
-                if (adcValues_buffer_toggle == 0)
-                    adcValues_buffer0_ready = 1;
-                if (adcValues_buffer_toggle == 1)
-                    adcValues_buffer1_ready = 1;
-
-                adcValues_buffer_toggle = !adcValues_buffer_toggle;
-
+            adcDataReady = 1;
             }
-            HAL_GPIO_TogglePin(SYNC_GPIO_Port, SYNC_Pin);
-        }
     }
 }
 
@@ -241,8 +172,7 @@ void USR_InitExtADC(void){
         //Configure ADC
         pTxDat[0] = 0b01000011;
         // AINP = AIN1, AINN = AIN2, gain = 64, PGA enabled
-        /* pTxDat[1] = 0x3E; */
-        pTxDat[1] = 0x0C;
+        pTxDat[1] = 0x5C;
         // DR = 20 SPS, normal mode, continuous conversion mode
         pTxDat[2] = 0xC4;
         // AVDD Reference, simultaneous 50-Hz and 60-Hz
@@ -265,7 +195,7 @@ void USR_InitExtADC(void){
         HAL_SPI_TransmitReceive(&hspi1, pTxDat, pRxDat, 5, HAL_MAX_DELAY);
         HAL_Delay(1);
         HAL_GPIO_WritePin(ST_CS_GPIO_PORTS[i], ST_CS_PINS[i], GPIO_PIN_SET);
-        if (pRxDat[1] != 0x0c) {
+        if (pRxDat[1] != 0x5c) {
             USR_LedBlink(6);
             _Error_Handler(__FILE__, __LINE__);
         }
@@ -290,7 +220,8 @@ void USR_InitExtADC(void){
 }
 
 void USR_ExtADC_Read(int32_t adcValue[4]){
-    uint8_t pRxDat[3];
+    uint8_t pRxDat[4];
+    uint8_t pTxDat[] = {0x10,0,0,0};
     uint16_t ST_CS_PINS[] = {ST_CS1_Pin, ST_CS2_Pin, ST_CS3_Pin, ST_CS4_Pin};
     GPIO_TypeDef* ST_CS_GPIO_PORTS[] = {ST_CS1_GPIO_Port,ST_CS2_GPIO_Port,ST_CS3_GPIO_Port,ST_CS4_GPIO_Port};
 
@@ -299,12 +230,9 @@ void USR_ExtADC_Read(int32_t adcValue[4]){
         memset(pRxDat, 0, sizeof(pRxDat));
         //Read ADC
         HAL_GPIO_WritePin(ST_CS_GPIO_PORTS[i], ST_CS_PINS[i], GPIO_PIN_RESET);
-        /* HAL_Delay(1); */
-        HAL_SPI_Receive(&hspi1, pRxDat, 3, HAL_MAX_DELAY);
-        /* HAL_Delay(1); */
+        HAL_SPI_TransmitReceive(&hspi1, pTxDat, pRxDat, 4, HAL_MAX_DELAY);
         HAL_GPIO_WritePin(ST_CS_GPIO_PORTS[i], ST_CS_PINS[i], GPIO_PIN_SET);
-        /* HAL_Delay(1); */
-        adcValue[i] = (((uint32_t)pRxDat[0]) << 16) | (((uint32_t) pRxDat[1]) << 8) | pRxDat[2];
+        adcValue[i] = (((uint32_t)pRxDat[1]) << 16) | (((uint32_t) pRxDat[2]) << 8) | pRxDat[3];
         if (adcValue[i]>>23){
             adcValue[i] = (~adcValue[i]) & 0x007FFFFF;
             adcValue[i]++;
@@ -362,18 +290,18 @@ int main(void)
   MX_TIM6_Init();
   MX_USB_DEVICE_Init();
   MX_SDMMC1_SD_Init();
-  MX_FATFS_Init();
   MX_RTC_Init();
+  MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
 
     /* HAL_NVIC_SetPriority(TIM1_CC_IRQn, 2, 0); // Set timer1 priority */
     USR_ADC1_Init();
-    /* HAL_TIM_OC_Start_IT(&htim1, TIM_CHANNEL_3); */
-    /* HAL_TIM_OC_Start(&htim2, TIM_CHANNEL_1); */
+    HAL_TIM_OC_Start_IT(&htim1, TIM_CHANNEL_3);
+    HAL_TIM_OC_Start(&htim2, TIM_CHANNEL_1);
     /* HAL_TIM_Base_Start_IT(&htim6); */
     hrtc_ptr = &hrtc; // allow usbd_cdc_if access to rtc
 
-    HAL_GPIO_WritePin(LED_STAT_GPIO_Port, LED_STAT_Pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(LED_STAT_GPIO_Port, LED_STAT_Pin, GPIO_PIN_RESET);
 
 
     if (USR_getBatteryLevel() == CRITICAL) {
@@ -390,11 +318,12 @@ int main(void)
   /* USER CODE BEGIN WHILE */
 
     while (recSessionState == NEW_SESSION){
+        char adcstr[100];
+        int32_t adcValues[4];
+
         HAL_Delay(100);
         __HAL_GPIO_EXTI_CLEAR_IT(EXTI9_5_IRQn);
         HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
-        uint32_t wbytes;				    /* File write counts */
-        char adcstr[100];
         RTC_TimeTypeDef rtcTime;
         RTC_DateTypeDef rtcDate;
 
@@ -406,50 +335,45 @@ int main(void)
             USR_CheckSD();
             _Error_Handler(__FILE__, __LINE__);
         }
+        f_sync(&SDFile);
 
 
-        USR_LedBlink(2);
-
-        int samples = 0;
+        volatile int badsamples = 0;
 
         recSessionState = ACTIVE_SESSION;
 
         FRESULT fatfsResult;
+//Simple loop
+        HAL_GPIO_WritePin(LED_STAT_GPIO_Port, LED_STAT_Pin, GPIO_PIN_SET);
         while (recSessionState == ACTIVE_SESSION){
-
-                HAL_Delay(1);
-                    sprintf(adcstr, "%d Testing\r\n", samples++);
-                fatfsResult = f_write(&SDFile, adcstr, strlen(adcstr), (void *)&wbytes);
-                if (fatfsResult != FR_OK){
-                    _Error_Handler(__FILE__, __LINE__);
+                if (adcDataReady == 1){
+                    adcDataReady = 0;
+                    HAL_GPIO_WritePin(SYNC_GPIO_Port, SYNC_Pin, GPIO_PIN_SET);
+                    USR_ExtADC_Read(adcValues);
+                    sprintf(adcstr, "%ld,%ld,%ld,%ld\n",\
+                            (long) adcValues[0],\
+                            (long) adcValues[1],\
+                            (long) adcValues[2],\
+                            (long) adcValues[3]);
+                    CDC_Transmit_FS((uint8_t*)adcstr, strlen(adcstr));
+                    HAL_GPIO_TogglePin(LED_STAT_GPIO_Port, LED_STAT_Pin);
+                    fatfsResult = f_puts(adcstr, &SDFile);
+                    if (fatfsResult == -1){
+                        badsamples++;
+                        USR_LedBlink(100);
+                        Error_Handler();
+                    }
+                    HAL_GPIO_WritePin(SYNC_GPIO_Port, SYNC_Pin, GPIO_PIN_RESET);
                 }
             }
 
-        /* while (recSessionState == ACTIVE_SESSION){ */
-
-        /*     if (adcValues_buffer0_ready){ */
-        /*         for (int i=0; i < BUFF_SIZE; i++){ */
-        /*             sprintf(adcstr, "%ld,%ld,%ld,%ld\r\n", (long) adcValues[0][i][0],(long) adcValues[0][i][1],(long) adcValues[0][i][2],(long) adcValues[0][i][3]); */
-        /*             fatfsResult = f_write(&SDFile, adcstr, strlen(adcstr), (void *)&wbytes); */
-        /*             if (fatfsResult != FR_OK){ */
-        /*                 _Error_Handler(__FILE__, __LINE__); */
-        /*             } */
-        /*         } */
-        /*     } */
-
-        /*     if (adcValues_buffer0_ready){ */
-        /*         for (int i=0; i < 500; i++){ */
-        /*             sprintf(adcstr, "%ld,%ld,%ld,%ld\r\n", (long) adcValues[0][i][0],(long) adcValues[0][i][1],(long) adcValues[0][i][2],(long) adcValues[0][i][3]); */
-        /*             fatfsResult = f_write(&SDFile, adcstr, strlen(adcstr), (void *)&wbytes); */
-        /*             if (fatfsResult != FR_OK){ */
-        /*                 _Error_Handler(__FILE__, __LINE__); */
-        /*             } */
-        /*         } */
-        /*     } */
-
         /* } */
+        HAL_GPIO_WritePin(LED_STAT_GPIO_Port, LED_STAT_Pin, GPIO_PIN_RESET);
         f_sync(&SDFile);
+        HAL_Delay(100);
         f_close(&SDFile);
+        HAL_Delay(100);
+        f_sync(&SDFile);
         HAL_Delay(1000);
 
         if (USR_Button_Status() == 1){
@@ -576,7 +500,6 @@ static void MX_ADC1_Init(void)
   hadc1.Init.ContinuousConvMode = DISABLE;
   hadc1.Init.NbrOfConversion = 1;
   hadc1.Init.DiscontinuousConvMode = DISABLE;
-  hadc1.Init.NbrOfDiscConversion = 1;
   hadc1.Init.DMAContinuousRequests = DISABLE;
   hadc1.Init.Overrun = ADC_OVR_DATA_PRESERVED;
   hadc1.Init.OversamplingMode = DISABLE;
@@ -613,9 +536,6 @@ static void MX_RTC_Init(void)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
-  /* USER CODE BEGIN RTC_Init 2 */
-
-  /* USER CODE END RTC_Init 2 */
 
 }
 
@@ -629,7 +549,7 @@ static void MX_SDMMC1_SD_Init(void)
   hsd1.Init.ClockPowerSave = SDMMC_CLOCK_POWER_SAVE_DISABLE;
   hsd1.Init.BusWide = SDMMC_BUS_WIDE_1B;
   hsd1.Init.HardwareFlowControl = SDMMC_HARDWARE_FLOW_CONTROL_DISABLE;
-  hsd1.Init.ClockDiv = 6;
+  hsd1.Init.ClockDiv = 48;
 
 }
 
@@ -645,7 +565,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_2EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_64;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -671,7 +591,7 @@ static void MX_TIM1_Init(void)
   htim1.Instance = TIM1;
   htim1.Init.Prescaler = 8;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = HTIM1_PERIOD;
+  htim1.Init.Period = 1035;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -701,7 +621,7 @@ static void MX_TIM1_Init(void)
   }
 
   sConfigOC.OCMode = TIM_OCMODE_TOGGLE;
-  sConfigOC.Pulse = HTIM1_OC;
+  sConfigOC.Pulse = 518;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;

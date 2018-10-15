@@ -1,5 +1,0 @@
-erase
-loadfile build/StrainLogger_SW_OldCube.hex
-r
-g
-q
